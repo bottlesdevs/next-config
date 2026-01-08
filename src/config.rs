@@ -124,3 +124,12 @@ impl RegisteredConfig {
 }
 
 inventory::collect!(RegisteredConfig);
+
+#[macro_export]
+macro_rules! submit_config {
+    ($config_type:ty) => {
+        ::inventory::submit! {
+            $crate::RegisteredConfig::new::<$config_type>()
+        }
+    };
+}
