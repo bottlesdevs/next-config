@@ -1,8 +1,12 @@
-use crate::error::Error;
+use crate::{
+    error::Error,
+    migration::{MigrateFn, RegisteredMigration},
+};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_value::Value;
 use std::{
     any::{Any, TypeId},
+    collections::HashMap,
     path::Path,
 };
 
@@ -19,14 +23,18 @@ pub trait AnyConfig: Send + Sync {
     fn save(&self, config_dir: &Path) -> Result<(), Error>;
 }
 
-pub struct ConfigData<T>(Option<T>);
+pub struct ConfigData<T> {
+    data: Option<T>,
+    migrations: HashMap<u32, MigrateFn>,
+}
+
 impl<T: Config> AnyConfig for ConfigData<T> {
     fn inner(&self) -> &dyn Any {
-        self.0.as_ref().unwrap()
+        self.data.as_ref().unwrap()
     }
 
     fn inner_mut(&mut self) -> &mut dyn Any {
-        self.0.as_mut().unwrap()
+        self.data.as_mut().unwrap()
     }
 
     fn load_from_dir(&mut self, conf_dir: &Path) -> Result<(), Error> {
@@ -59,7 +67,14 @@ impl<T: Config> AnyConfig for ConfigData<T> {
         };
 
         let instance: T = serde::Deserialize::deserialize(value)?;
-        self.0 = Some(instance);
+        self.data = Some(instance);
+
+        inventory::iter::<RegisteredMigration>
+            .into_iter()
+            .filter(|migration| (migration.id)() == TypeId::of::<T>())
+            .for_each(|migration| {
+                self.migrations.insert((migration.from)(), migration.f);
+            });
 
         if !fs_path.exists() {
             self.save(conf_dir)?;
@@ -72,7 +87,7 @@ impl<T: Config> AnyConfig for ConfigData<T> {
         let destination = config_dir.join(T::FILE_NAME);
 
         let mut config = self
-            .0
+            .data
             .as_ref()
             .map(serde_value::to_value)
             .ok_or("Config not loaded")
@@ -105,7 +120,10 @@ impl<T: Config> AnyConfig for ConfigData<T> {
 
 impl<T: Config> Default for ConfigData<T> {
     fn default() -> Self {
-        ConfigData(None)
+        ConfigData {
+            data: None,
+            migrations: HashMap::new(),
+        }
     }
 }
 
