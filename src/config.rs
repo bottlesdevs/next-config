@@ -1,3 +1,40 @@
+//! Configuration trait and type registration system.
+//!
+//! This module provides the core [`Config`] trait that all configuration types must
+//! implement, along with the infrastructure for type-erased storage and serialization.
+//!
+//! # Overview
+//!
+//! The configuration system works through a combination of:
+//!
+//! 1. **The [`Config`] trait**: Defines the interface that all config types must implement
+//! 2. **Type-erased storage**: [`AnyConfig`] and [`ConfigData<T>`] enable storing different
+//!    config types in a single collection
+//! 3. **Compile-time registration**: The [`submit_config!`](crate::submit_config) macro
+//!    registers config types using the [`inventory`] crate
+//!
+//! # Example
+//!
+//! ```rust
+//! use next_config::{Config, submit_config};
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Debug, Default, Serialize, Deserialize)]
+//! struct DatabaseConfig {
+//!     host: String,
+//!     port: u16,
+//!     max_connections: u32,
+//! }
+//!
+//! impl Config for DatabaseConfig {
+//!     const VERSION: u32 = 1;
+//!     const FILE_NAME: &'static str = "database.toml";
+//! }
+//!
+//! // Register the config type
+//! submit_config!(DatabaseConfig);
+//! ```
+
 use crate::{
     error::Error,
     migration::{MigrateFn, RegisteredMigration},
@@ -10,22 +47,152 @@ use std::{
     path::Path,
 };
 
+/// The main trait that all configuration types must implement.
+///
+/// This trait defines the contract for configuration structs, including
+/// versioning information and file naming. Types implementing this trait
+/// can be managed by the [`ConfigStore`](crate::ConfigStore).
+///
+/// # Versioning
+///
+/// The `VERSION` constant is used to track schema changes. When you modify
+/// the structure of your config (adding/removing/renaming fields), you should:
+///
+/// 1. Increment the `VERSION` constant
+/// 2. Optionally define and register a [`Migration`](crate::Migration) to transform old configs
+///
+/// # Example
+///
+/// ```rust
+/// use next_config::Config;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Debug, Serialize, Deserialize)]
+/// struct AppConfig {
+///     app_name: String,
+///     debug_mode: bool,
+///     log_level: String,
+/// }
+///
+/// impl Config for AppConfig {
+///     /// Current schema version - increment when changing the struct
+///     const VERSION: u32 = 1;
+///
+///     /// File will be saved as "app.toml" in the config directory
+///     const FILE_NAME: &'static str = "app.toml";
+/// }
+///
+/// impl Default for AppConfig {
+///     fn default() -> Self {
+///         Self {
+///             app_name: "MyApp".to_string(),
+///             debug_mode: false,
+///             log_level: "info".to_string(),
+///         }
+///     }
+/// }
+/// ```
 pub trait Config: Default + Send + Sync + Serialize + DeserializeOwned + 'static {
+    /// The current schema version of this configuration.
+    ///
+    /// This version number is stored in the config file as `_version` and is
+    /// used to determine if migrations need to be applied when loading.
     const VERSION: u32;
+
+    /// The filename for this configuration file.
+    ///
+    /// This should be a simple filename (not a path) ending in `.toml`.
+    /// The file will be created in the directory passed to
+    /// [`ConfigStore::init`](crate::ConfigStore::init).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use next_config::Config;
+    /// # use serde::{Deserialize, Serialize};
+    /// # #[derive(Debug, Default, Serialize, Deserialize)]
+    /// # struct MyConfig;
+    /// impl Config for MyConfig {
+    ///     const VERSION: u32 = 1;
+    ///     const FILE_NAME: &'static str = "my_config.toml";
+    /// }
+    /// ```
     const FILE_NAME: &'static str;
 }
 
+/// Internal trait for type-erased configuration storage.
+///
+/// This trait enables the [`ConfigStore`](crate::ConfigStore) to store
+/// different configuration types in a single `HashMap` while still
+/// supporting type-safe access through downcasting.
+///
+/// This trait is not intended to be implemented directly by users.
 pub trait AnyConfig: Send + Sync {
+    /// Returns a reference to the inner config as `dyn Any`.
+    ///
+    /// Used for downcasting to the concrete config type.
     fn inner(&self) -> &dyn Any;
+
+    /// Returns a mutable reference to the inner config as `dyn Any`.
+    ///
+    /// Used for downcasting to the concrete config type for updates.
     fn inner_mut(&mut self) -> &mut dyn Any;
 
+    /// Loads the configuration from a directory.
+    ///
+    /// If the config file exists, it will be read and potentially migrated.
+    /// If it doesn't exist, a new file with default values will be created.
+    ///
+    /// # Arguments
+    ///
+    /// * `conf_dir` - The directory containing configuration files
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The file cannot be read
+    /// - The TOML cannot be parsed
+    /// - Migration fails
+    /// - The config cannot be deserialized
     fn load_from_dir(&mut self, conf_dir: &Path) -> Result<(), Error>;
+
+    /// Saves the configuration to a directory.
+    ///
+    /// The save operation is atomic: the config is first written to a
+    /// temporary file, then renamed to the final destination.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_dir` - The directory to save the configuration to
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The config cannot be serialized
+    /// - The file cannot be written
     fn save(&self, config_dir: &Path) -> Result<(), Error>;
 }
 
+/// Wrapper type that holds configuration data and handles serialization.
+///
+/// This struct implements [`AnyConfig`] for any type that implements [`Config`],
+/// providing the bridge between the type-safe config world and the type-erased
+/// storage in [`ConfigStore`](crate::ConfigStore).
 pub struct ConfigData<T>(Option<T>);
 
 impl<T: Config> ConfigData<T> {
+    /// Merges default values into the target value.
+    ///
+    /// This ensures that any fields missing from the loaded config
+    /// are populated with their default values.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - The value to merge defaults into
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the default config cannot be serialized.
     fn merge_defaults(target: &mut Value) -> Result<(), Error> {
         let defaults = serde_value::to_value(T::default())?;
 
@@ -38,6 +205,25 @@ impl<T: Config> ConfigData<T> {
         Ok(())
     }
 
+    /// Applies migrations to bring the config up to the current version.
+    ///
+    /// This method:
+    /// 1. Extracts the current version from the value
+    /// 2. Applies registered migrations in sequence
+    /// 3. Updates the version field
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The config value to migrate
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if migrations were applied, `Ok(false)` if no
+    /// migration was needed (config was already at current version).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any migration function fails.
     fn migrate(&self, value: &mut Value) -> Result<bool, Error> {
         let migrations: HashMap<u32, MigrateFn> = inventory::iter::<RegisteredMigration>
             .into_iter()
@@ -70,23 +256,36 @@ impl<T: Config> ConfigData<T> {
         Ok(needs_migration)
     }
 
+    /// Extracts the version number from a config value.
+    ///
+    /// Looks for a `_version` field in the map and attempts to parse it
+    /// as a number. Supports various integer types for flexibility.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The config value to extract the version from
+    ///
+    /// # Returns
+    ///
+    /// The version number, or `1` if no version field is present (assumes
+    /// legacy configs without versioning are version 1).
     fn extract_version(value: &Value) -> u32 {
         if let Value::Map(map) = value {
             for (k, v) in map {
-                if let Value::String(key_str) = k {
-                    if key_str == "_version" {
-                        return match v {
-                            Value::U8(n) => *n as u32,
-                            Value::U16(n) => *n as u32,
-                            Value::U32(n) => *n,
-                            Value::U64(n) => *n as u32,
-                            Value::I8(n) => *n as u32,
-                            Value::I16(n) => *n as u32,
-                            Value::I32(n) => *n as u32,
-                            Value::I64(n) => *n as u32,
-                            _ => 1,
-                        };
-                    }
+                if let Value::String(key_str) = k
+                    && key_str == "_version"
+                {
+                    return match v {
+                        Value::U8(n) => *n as u32,
+                        Value::U16(n) => *n as u32,
+                        Value::U32(n) => *n,
+                        Value::U64(n) => *n as u32,
+                        Value::I8(n) => *n as u32,
+                        Value::I16(n) => *n as u32,
+                        Value::I32(n) => *n as u32,
+                        Value::I64(n) => *n as u32,
+                        _ => 1,
+                    };
                 }
             }
         }
@@ -185,12 +384,50 @@ impl<T: Config> Default for ConfigData<T> {
     }
 }
 
+/// A descriptor for a registered configuration type.
+///
+/// This struct is created by the [`submit_config!`](crate::submit_config) macro
+/// and collected at runtime by the [`inventory`] crate. It provides factory
+/// functions for creating config instances and identifying config types.
+///
+/// # Usage
+///
+/// You should not create this struct directly. Instead, use the `submit_config!` macro:
+///
+/// ```rust
+/// use next_config::{Config, submit_config};
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Debug, Default, Serialize, Deserialize)]
+/// struct MyConfig {
+///     value: i32,
+/// }
+///
+/// impl Config for MyConfig {
+///     const VERSION: u32 = 1;
+///     const FILE_NAME: &'static str = "my_config.toml";
+/// }
+///
+/// // This creates and registers a RegisteredConfig
+/// submit_config!(MyConfig);
+/// ```
 pub struct RegisteredConfig {
+    /// Factory function that creates a new boxed config instance.
     pub config: fn() -> Box<dyn AnyConfig>,
+
+    /// Function that returns the [`TypeId`] of the config type.
     pub id: fn() -> TypeId,
 }
 
 impl RegisteredConfig {
+    /// Creates a new `RegisteredConfig` for the given config type.
+    ///
+    /// This is a `const fn` to allow usage in static contexts required
+    /// by the [`inventory`] crate.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The config type to register (must implement [`Config`])
     pub const fn new<T: Config>() -> Self {
         Self {
             config: || Box::new(ConfigData::<T>::default()),
@@ -199,8 +436,46 @@ impl RegisteredConfig {
     }
 }
 
+// Collect all registered configs using the inventory crate
 inventory::collect!(RegisteredConfig);
 
+/// Registers a configuration type with the global registry.
+///
+/// This macro must be called for each config type you want to use with
+/// [`ConfigStore`](crate::ConfigStore). It creates a static registration
+/// that is collected at runtime.
+///
+/// # Arguments
+///
+/// * `$config_type` - The type implementing [`Config`] to register
+///
+/// # Example
+///
+/// ```rust
+/// use next_config::{Config, submit_config};
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Debug, Default, Serialize, Deserialize)]
+/// struct ServerConfig {
+///     host: String,
+///     port: u16,
+/// }
+///
+/// impl Config for ServerConfig {
+///     const VERSION: u32 = 1;
+///     const FILE_NAME: &'static str = "server.toml";
+/// }
+///
+/// // Register at module scope
+/// submit_config!(ServerConfig);
+/// ```
+///
+/// # Note
+///
+/// The macro invocation should be at module scope (not inside a function)
+/// to ensure the registration happens at program startup. While it will
+/// work inside functions in some cases, this is not guaranteed to work
+/// in all scenarios due to how static initialization works in Rust.
 #[macro_export]
 macro_rules! submit_config {
     ($config_type:ty) => {
