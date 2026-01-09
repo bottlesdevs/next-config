@@ -450,3 +450,76 @@ impl ConfigStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+    use tempfile::TempDir;
+
+    #[derive(Debug, Default, Serialize, Deserialize)]
+    struct StoreTestConfig {
+        name: String,
+        value: u32,
+    }
+
+    impl crate::Config for StoreTestConfig {
+        const VERSION: u32 = 1;
+        const FILE_NAME: &'static str = "store_test.toml";
+    }
+
+    crate::submit_config!(StoreTestConfig);
+
+    fn temp_config_dir() -> TempDir {
+        tempfile::tempdir().expect("Failed to create temp directory")
+    }
+
+    #[test]
+    fn test_config_store_initialization() {
+        let temp_dir = temp_config_dir();
+        let store = ConfigStore::init(temp_dir.path());
+        assert!(store.is_ok(), "ConfigStore should initialize successfully");
+    }
+
+    #[test]
+    fn test_init_collects_registered_configs() {
+        let temp_dir = temp_config_dir();
+        let store = ConfigStore::init(temp_dir.path()).unwrap();
+
+        // Should have at least the StoreTestConfig registered
+        let type_id = TypeId::of::<StoreTestConfig>();
+        assert!(
+            store.configs.contains_key(&type_id),
+            "Store should contain registered config"
+        );
+    }
+
+    #[derive(Debug, Default, Serialize, Deserialize)]
+    struct UnregisteredStoreConfig {
+        field: String,
+    }
+
+    impl crate::Config for UnregisteredStoreConfig {
+        const VERSION: u32 = 1;
+        const FILE_NAME: &'static str = "unregistered_store.toml";
+    }
+
+    #[test]
+    fn test_get_unregistered_returns_error() {
+        let temp_dir = temp_config_dir();
+        let store = ConfigStore::init(temp_dir.path()).unwrap();
+
+        let result = store.get::<UnregisteredStoreConfig>();
+        assert!(matches!(result, Err(Error::UnregisteredConfig(_))));
+    }
+
+    #[test]
+    fn test_configs_map_uses_type_id_as_key() {
+        let temp_dir = temp_config_dir();
+        let store = ConfigStore::init(temp_dir.path()).unwrap();
+
+        // Verify that TypeId is used as key
+        let type_id = TypeId::of::<StoreTestConfig>();
+        assert!(store.configs.get(&type_id).is_some());
+    }
+}

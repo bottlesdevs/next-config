@@ -270,26 +270,15 @@ impl<T: Config> ConfigData<T> {
     /// The version number, or `1` if no version field is present (assumes
     /// legacy configs without versioning are version 1).
     fn extract_version(value: &Value) -> u32 {
-        if let Value::Map(map) = value {
-            for (k, v) in map {
-                if let Value::String(key_str) = k
-                    && key_str == "_version"
-                {
-                    return match v {
-                        Value::U8(n) => *n as u32,
-                        Value::U16(n) => *n as u32,
-                        Value::U32(n) => *n,
-                        Value::U64(n) => *n as u32,
-                        Value::I8(n) => *n as u32,
-                        Value::I16(n) => *n as u32,
-                        Value::I32(n) => *n as u32,
-                        Value::I64(n) => *n as u32,
-                        _ => 1,
-                    };
-                }
-            }
+        match value {
+            Value::Map(map) => map
+                .get(&Value::String("_version".to_string()))
+                .map(|val| {
+                    Value::deserialize_into(val.clone()).expect("Failed to deserialize _version")
+                })
+                .unwrap_or(1u32),
+            _ => panic!("Expected config to serialize to a map"),
         }
-        1 // Default to version 1 if not specified
     }
 }
 
@@ -483,4 +472,141 @@ macro_rules! submit_config {
             $crate::RegisteredConfig::new::<$config_type>()
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+    use serde_value::Value;
+    use std::collections::BTreeMap;
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct TestConfig {
+        name: String,
+        count: u32,
+        enabled: bool,
+    }
+
+    impl Config for TestConfig {
+        const VERSION: u32 = 1;
+        const FILE_NAME: &'static str = "test_config.toml";
+    }
+
+    impl Default for TestConfig {
+        fn default() -> Self {
+            Self {
+                name: "default_name".to_string(),
+                count: 42,
+                enabled: true,
+            }
+        }
+    }
+
+    #[test]
+    fn test_extract_version() {
+        let mut map = BTreeMap::new();
+        map.insert(Value::String("_version".to_string()), Value::U32(5));
+        let value = Value::Map(map);
+
+        assert_eq!(ConfigData::<TestConfig>::extract_version(&value), 5);
+    }
+
+    #[test]
+    fn test_extract_version_missing_defaults_to_1() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            Value::String("name".to_string()),
+            Value::String("test".to_string()),
+        );
+        let value = Value::Map(map);
+
+        assert_eq!(ConfigData::<TestConfig>::extract_version(&value), 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_extract_version_non_map_panics() {
+        let value = Value::String("not a map".to_string());
+
+        assert_eq!(ConfigData::<TestConfig>::extract_version(&value), 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_extract_version_invalid_type_panics() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            Value::String("_version".to_string()),
+            Value::String("not a number".to_string()),
+        );
+        let value = Value::Map(map);
+
+        assert_eq!(ConfigData::<TestConfig>::extract_version(&value), 1);
+    }
+
+    #[test]
+    fn test_merge_defaults_adds_missing_fields() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            Value::String("name".to_string()),
+            Value::String("custom_name".to_string()),
+        );
+        let mut value = Value::Map(map);
+
+        ConfigData::<TestConfig>::merge_defaults(&mut value).unwrap();
+
+        match value {
+            Value::Map(map) => {
+                // Original field preserved
+                assert_eq!(
+                    map.get(&Value::String("name".to_string())),
+                    Some(&Value::String("custom_name".to_string()))
+                );
+                // Default fields added
+                assert_eq!(
+                    map.get(&Value::String("count".to_string())),
+                    Some(&Value::U32(42))
+                );
+                assert_eq!(
+                    map.get(&Value::String("enabled".to_string())),
+                    Some(&Value::Bool(true))
+                );
+            }
+            _ => panic!("Expected Value::Map"),
+        }
+    }
+
+    #[test]
+    fn test_merge_defaults_preserves_existing_fields() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            Value::String("name".to_string()),
+            Value::String("custom".to_string()),
+        );
+        map.insert(Value::String("count".to_string()), Value::U32(999));
+        map.insert(Value::String("enabled".to_string()), Value::Bool(false));
+        let mut value = Value::Map(map);
+
+        ConfigData::<TestConfig>::merge_defaults(&mut value).unwrap();
+
+        match value {
+            Value::Map(map) => {
+                // All fields should retain their original values
+                assert_eq!(
+                    map.get(&Value::String("name".to_string())),
+                    Some(&Value::String("custom".to_string()))
+                );
+                assert_eq!(
+                    map.get(&Value::String("count".to_string())),
+                    Some(&Value::U32(999))
+                );
+                assert_eq!(
+                    map.get(&Value::String("enabled".to_string())),
+                    Some(&Value::Bool(false))
+                );
+            }
+            _ => panic!("Expected Value::Map"),
+        }
+    }
 }
