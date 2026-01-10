@@ -96,11 +96,21 @@ name = "next-config"
 version = "0.1.0"
 dependencies = [
  "inventory",
+ "next-config-macros",
  "serde",
  "serde-value",
  "tempfile",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "next-config-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
