@@ -1,15 +1,16 @@
 [package]
 name = "next-config"
-authors = ["Inam Ul Haq <inam123451@gmail.com"]
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+homepage.workspace = true
+authors.workspace = true
 
 [dependencies]
-inventory = "0.3.21"
+inventory.workspace = true
 next-config-macros = { path = "./next-config-macros" }
-serde = { version = "1.0.228", features = ["derive"] }
-serde-value = "0.7.0"
-thiserror = "2.0.17"
+serde.workspace = true
+serde-value.workspace = true
+thiserror.workspace = true
 toml = "0.9.10"
 
 [dev-dependencies]
