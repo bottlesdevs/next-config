@@ -1,19 +1,14 @@
-use next_config::{Config, ConfigStore, error::Error, submit_config};
+use next_config::{Config, ConfigStore, error::Error};
 use serde::{Deserialize, Serialize};
 
 /// A simple application configuration.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Serialize, Deserialize, Config)]
+#[config(version = 1, file_name = "app.toml")]
 struct AppConfig {
     app_name: String,
     port: u16,
     debug: bool,
     max_connections: u32,
-}
-
-impl Config for AppConfig {
-    const VERSION: u32 = 1;
-    const FILE_NAME: &'static str = "app.toml";
 }
 
 impl Default for AppConfig {
@@ -26,8 +21,6 @@ impl Default for AppConfig {
         }
     }
 }
-
-submit_config!(AppConfig);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = tempfile::tempdir()?;

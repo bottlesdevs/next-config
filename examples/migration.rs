@@ -1,19 +1,14 @@
-use next_config::{Config, ConfigStore, Migration, error::Error, submit_config, submit_migration};
+use next_config::{Config, ConfigStore, Migration, error::Error, submit_migration};
 use serde::{Deserialize, Serialize};
 use serde_value::Value;
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Serialize, Deserialize, Config)]
+#[config(version = 2, file_name = "server.toml")]
 struct ServerConfig {
     host: String,
     port: u16,
     max_connections: u32,
     use_tls: bool, // added in v2
-}
-
-impl Config for ServerConfig {
-    const VERSION: u32 = 2;
-    const FILE_NAME: &'static str = "server.toml";
 }
 
 impl Default for ServerConfig {
@@ -26,8 +21,6 @@ impl Default for ServerConfig {
         }
     }
 }
-
-submit_config!(ServerConfig);
 
 struct ServerConfigV1ToV2;
 

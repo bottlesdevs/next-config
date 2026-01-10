@@ -22,30 +22,24 @@ pub enum Error {
     /// This error is returned when calling [`ConfigStore::get`](crate::ConfigStore::get),
     /// [`ConfigStore::load`](crate::ConfigStore::load), or
     /// [`ConfigStore::update`](crate::ConfigStore::update) with a config type
-    /// that was not registered using the [`submit_config!`](crate::submit_config) macro.
+    /// that was not registered using the [`#[derive(Config)]`](crate::Config) macro.
     ///
     /// The contained string is the `FILE_NAME` of the unregistered config type.
     ///
     /// # How to Fix
     ///
-    /// Make sure to register your config type at module scope:
+    /// Make sure to register your config type using the derive macro:
     ///
     /// ```rust
-    /// use next_config::{Config, submit_config};
+    /// use next_config::Config;
     /// use serde::{Deserialize, Serialize};
     ///
-    /// #[derive(Debug, Default, Serialize, Deserialize)]
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "my_config.toml")]
     /// struct MyConfig {
     ///     field: String,
     /// }
-    ///
-    /// impl Config for MyConfig {
-    ///     const VERSION: u32 = 1;
-    ///     const FILE_NAME: &'static str = "my_config.toml";
-    /// }
-    ///
-    /// // Don't forget this line!
-    /// submit_config!(MyConfig);
+    /// // Config is now automatically registered!
     /// ```
     #[error("Config not registered: {0}")]
     UnregisteredConfig(String),

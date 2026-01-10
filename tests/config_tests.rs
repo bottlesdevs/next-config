@@ -1,4 +1,4 @@
-use next_config::{Config, ConfigStore, error::Error, submit_config};
+use next_config::{Config, ConfigStore, error::Error};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use tempfile::TempDir;
@@ -8,17 +8,13 @@ fn temp_config_dir() -> TempDir {
     tempfile::tempdir().expect("Failed to create temp directory")
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Config, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[config(version = 1, file_name = "basic.toml")]
 #[serde(default)]
 struct BasicConfig {
     name: String,
     count: u32,
     enabled: bool,
-}
-
-impl Config for BasicConfig {
-    const VERSION: u32 = 1;
-    const FILE_NAME: &'static str = "basic.toml";
 }
 
 impl Default for BasicConfig {
@@ -31,17 +27,11 @@ impl Default for BasicConfig {
     }
 }
 
-submit_config!(BasicConfig);
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Config)]
+#[config(version = 1, file_name = "strict.toml")]
 struct StrictConfig {
     required_field: String,
     also_required: u32,
-}
-
-impl Config for StrictConfig {
-    const VERSION: u32 = 1;
-    const FILE_NAME: &'static str = "strict.toml";
 }
 
 impl Default for StrictConfig {
@@ -53,21 +43,22 @@ impl Default for StrictConfig {
     }
 }
 
-submit_config!(StrictConfig);
-
+// UnregisteredConfig uses Config directly without derive(Config)
+// so it is NOT registered with inventory
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct UnregisteredConfig {
     field: String,
 }
 
-impl Config for UnregisteredConfig {
+impl next_config::Config for UnregisteredConfig {
     const VERSION: u32 = 1;
     const FILE_NAME: &'static str = "unregistered.toml";
 }
 
-// Note: UnregisteredConfig is intentionally NOT registered with submit_config!
+// Note: UnregisteredConfig is intentionally NOT registered!
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Config)]
+#[config(version = 1, file_name = "complex.toml")]
 struct ComplexConfig {
     nested: NestedStruct,
     items: Vec<String>,
@@ -78,11 +69,6 @@ struct ComplexConfig {
 struct NestedStruct {
     inner_value: i32,
     inner_name: String,
-}
-
-impl Config for ComplexConfig {
-    const VERSION: u32 = 1;
-    const FILE_NAME: &'static str = "complex.toml";
 }
 
 impl Default for ComplexConfig {
@@ -97,8 +83,6 @@ impl Default for ComplexConfig {
         }
     }
 }
-
-submit_config!(ComplexConfig);
 
 #[test]
 fn test_load_creates_default_config_file() {
@@ -295,8 +279,6 @@ fn test_missing_fields_get_defaults_with_serde_default() {
     let temp_dir = temp_config_dir();
     let config_path = temp_dir.path().join("basic.toml");
 
-    // Write a config with missing fields
-    // Note: BasicConfig has #[serde(default)] so missing fields use Default impl
     let partial_content = r#"
 _version = 1
 name = "partial"
@@ -311,7 +293,6 @@ name = "partial"
     // Explicitly set field
     assert_eq!(config.name, "partial");
 
-    // Missing fields get defaults from #[serde(default)] + Default impl
     assert_eq!(config.count, 42);
     assert!(config.enabled);
 }
@@ -321,7 +302,6 @@ fn test_missing_fields_without_serde_default_fails() {
     let temp_dir = temp_config_dir();
     let config_path = temp_dir.path().join("strict.toml");
 
-    // Write a config with missing fields (no #[serde(default)] on StrictConfig)
     let partial_content = r#"
 _version = 1
 required_field = "present"
@@ -331,7 +311,6 @@ required_field = "present"
     let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
     let result = store.load::<StrictConfig>();
 
-    // Without #[serde(default)], missing fields cause deserialization errors
     assert!(
         result.is_err(),
         "Loading config with missing required field should fail"

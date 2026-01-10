@@ -7,32 +7,27 @@ A flexible, type-safe configuration system for Rust with versioning and migratio
 ### 1. Define Your Config
 
 ```rust
-use next_config::{Config, ConfigStore, submit_config};
+use next_config::Config;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Config)]
+#[serde(default)]
+#[config(version = 1, file_name = "app.toml")]
 struct AppConfig {
     name: String,
     port: u16,
     debug: bool,
 }
-
-impl Config for AppConfig {
-    const VERSION: u32 = 1;
-    const FILE_NAME: &'static str = "app.toml";
-}
-
-// Register the config type
-submit_config!(AppConfig);
 ```
 
 ### 2. Use the Config Store
 
 ```rust
+use next_config::ConfigStore;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the store
-    let CONFIG_DIR = ".";
-    let store = ConfigStore::init(CONFIG_DIR)?;
+    let mut store = ConfigStore::init("./config")?;
     
     // Load all registered configs
     store.load_all()?;
@@ -59,22 +54,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 When you need to change your config schema, increment the version and define a migration:
 
 ```rust
-use next_config::{Migration, submit_migration, error::Error};
+use next_config::{Config, Migration, submit_migration, error::Error};
+use serde::{Deserialize, Serialize};
 use serde_value::Value;
 
 // Updated config (version 2)
-impl Config for AppConfig {
-    const VERSION: u32 = 2; // Incremented from 1
-    // ... other trait items
+#[derive(Debug, Default, Serialize, Deserialize, Config)]
+#[serde(default)]
+#[config(version = 2, file_name = "app.toml")]
+struct AppConfig {
+    name: String,
+    port: u16,
+    debug: bool,
+    max_connections: u32,  // New field in v2
 }
 
 // Migration from version 1 to 2
 struct AppConfigV1ToV2;
 
-impl Migrator for AppConfigV1ToV2 {
+impl Migration for AppConfigV1ToV2 {
     const FROM: u32 = 1;
 
-    fn up(value: &mut Value) -> Result<(), Error> {
+    fn migrate(value: &mut Value) -> Result<(), Error> {
         // Add new field with default value
         if let Value::Map(map) = value {
             map.insert(

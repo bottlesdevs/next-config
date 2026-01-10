@@ -28,22 +28,18 @@
 //! Consider a config that evolved from v1 to v3:
 //!
 //! ```rust
-//! use next_config::{Config, Migration, submit_config, submit_migration, error::Error};
+//! use next_config::{Config, Migration, submit_migration, error::Error};
 //! use serde::{Deserialize, Serialize};
 //! use serde_value::Value;
 //!
 //! // Version 3 of the config (current)
-//! #[derive(Debug, Default, Serialize, Deserialize)]
+//! #[derive(Debug, Default, Serialize, Deserialize, Config)]
+//! #[config(version = 3, file_name = "app.toml")]
 //! struct AppConfig {
 //!     name: String,
 //!     port: u16,
 //!     timeout_seconds: u32,  // Added in v2
 //!     max_retries: u8,       // Added in v3
-//! }
-//!
-//! impl Config for AppConfig {
-//!     const VERSION: u32 = 3;
-//!     const FILE_NAME: &'static str = "app.toml";
 //! }
 //!
 //! // Migration from v1 to v2: add timeout_seconds
@@ -80,12 +76,11 @@
 //!     }
 //! }
 //!
-//! submit_config!(AppConfig);
 //! submit_migration!(AppConfig, AppConfigV1ToV2);
 //! submit_migration!(AppConfig, AppConfigV2ToV3);
 //! ```
 
-use crate::{Config, error::Error};
+use crate::{config::Config, error::Error};
 use serde_value::Value;
 use std::any::TypeId;
 
@@ -174,19 +169,15 @@ pub trait Migration: 'static + Send + Sync {
 /// `submit_migration!` macro:
 ///
 /// ```rust
-/// use next_config::{Config, Migration, submit_config, submit_migration, error::Error};
+/// use next_config::{Config, Migration, submit_migration, error::Error};
 /// use serde::{Deserialize, Serialize};
 /// use serde_value::Value;
 ///
-/// #[derive(Debug, Default, Serialize, Deserialize)]
+/// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+/// #[config(version = 2, file_name = "my_config.toml")]
 /// struct MyConfig {
 ///     field: String,
 ///     new_field: u32,  // Added in v2
-/// }
-///
-/// impl Config for MyConfig {
-///     const VERSION: u32 = 2;
-///     const FILE_NAME: &'static str = "my_config.toml";
 /// }
 ///
 /// struct MyConfigV1ToV2;
@@ -205,7 +196,6 @@ pub trait Migration: 'static + Send + Sync {
 ///     }
 /// }
 ///
-/// submit_config!(MyConfig);
 /// // This creates and registers a RegisteredMigration
 /// submit_migration!(MyConfig, MyConfigV1ToV2);
 /// ```
@@ -263,20 +253,16 @@ inventory::collect!(RegisteredMigration);
 /// # Example
 ///
 /// ```rust
-/// use next_config::{Config, Migration, submit_config, submit_migration, error::Error};
+/// use next_config::{Config, Migration, submit_migration, error::Error};
 /// use serde::{Deserialize, Serialize};
 /// use serde_value::Value;
 ///
-/// #[derive(Debug, Default, Serialize, Deserialize)]
+/// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+/// #[config(version = 2, file_name = "network.toml")]
 /// struct NetworkConfig {
 ///     host: String,
 ///     port: u16,
 ///     use_tls: bool,  // Added in v2
-/// }
-///
-/// impl Config for NetworkConfig {
-///     const VERSION: u32 = 2;
-///     const FILE_NAME: &'static str = "network.toml";
 /// }
 ///
 /// struct NetworkConfigV1ToV2;
@@ -296,7 +282,6 @@ inventory::collect!(RegisteredMigration);
 ///     }
 /// }
 ///
-/// submit_config!(NetworkConfig);
 /// submit_migration!(NetworkConfig, NetworkConfigV1ToV2);
 /// ```
 ///
@@ -312,7 +297,7 @@ inventory::collect!(RegisteredMigration);
 ///
 /// # Note
 ///
-/// Like [`submit_config!`](crate::submit_config), this macro should be called
+/// Like [`#[derive(Config)]`](crate::Config), this macro should be called
 /// at module scope to ensure the registration happens at program startup.
 #[macro_export]
 macro_rules! submit_migration {

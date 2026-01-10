@@ -8,7 +8,7 @@
 //!
 //! The [`ConfigStore`] acts as a central registry that:
 //!
-//! - Collects all config types registered with [`submit_config!`](crate::submit_config)
+//! - Collects all config types registered with [`Config`](crate::Config) derive macro
 //! - Loads config files from a specified directory
 //! - Provides type-safe access to configuration values
 //! - Handles updates and automatic persistence
@@ -16,21 +16,15 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use next_config::{Config, ConfigStore, submit_config};
+//! use next_config::{Config, ConfigStore};
 //! use serde::{Deserialize, Serialize};
 //!
-//! #[derive(Debug, Default, Serialize, Deserialize)]
+//! #[derive(Debug, Default, Serialize, Deserialize, Config)]
+//! #[config(version = 1, file_name = "app.toml")]
 //! struct AppConfig {
 //!     name: String,
 //!     debug: bool,
 //! }
-//!
-//! impl Config for AppConfig {
-//!     const VERSION: u32 = 1;
-//!     const FILE_NAME: &'static str = "app.toml";
-//! }
-//!
-//! submit_config!(AppConfig);
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create a store pointing to the config directory
@@ -58,7 +52,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{Config, RegisteredConfig, config::AnyConfig, error::Error};
+use crate::{
+    RegisteredConfig,
+    config::{AnyConfig, Config},
+    error::Error,
+};
 
 /// The central configuration store that manages all registered config types.
 ///
@@ -82,21 +80,15 @@ use crate::{Config, RegisteredConfig, config::AnyConfig, error::Error};
 /// # Example
 ///
 /// ```rust,no_run
-/// use next_config::{Config, ConfigStore, submit_config};
+/// use next_config::{Config, ConfigStore};
 /// use serde::{Deserialize, Serialize};
 ///
-/// #[derive(Debug, Default, Serialize, Deserialize)]
+/// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+/// #[config(version = 1, file_name = "database.toml")]
 /// struct DatabaseConfig {
 ///     host: String,
 ///     port: u16,
 /// }
-///
-/// impl Config for DatabaseConfig {
-///     const VERSION: u32 = 1;
-///     const FILE_NAME: &'static str = "database.toml";
-/// }
-///
-/// submit_config!(DatabaseConfig);
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut store = ConfigStore::init("/etc/myapp")?;
@@ -188,20 +180,14 @@ impl ConfigStore {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use next_config::{Config, ConfigStore, submit_config};
+    /// use next_config::{Config, ConfigStore};
     /// use serde::{Deserialize, Serialize};
     ///
-    /// #[derive(Debug, Default, Serialize, Deserialize)]
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "app.toml")]
     /// struct AppConfig {
     ///     name: String,
     /// }
-    ///
-    /// impl Config for AppConfig {
-    ///     const VERSION: u32 = 1;
-    ///     const FILE_NAME: &'static str = "app.toml";
-    /// }
-    ///
-    /// submit_config!(AppConfig);
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut store = ConfigStore::init("./config")?;
@@ -236,8 +222,8 @@ impl ConfigStore {
     ///
     /// # Type Parameters
     ///
-    /// * `T` - The configuration type to load. Must implement [`Config`] and
-    ///   have been registered with [`submit_config!`](crate::submit_config).
+    /// * `T` - The configuration type to load. Must implement [`Config`](crate::Config) and
+    ///   have been registered with [`#[derive(Config)]`](crate::Config).
     ///
     /// # Returns
     ///
@@ -251,20 +237,14 @@ impl ConfigStore {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use next_config::{Config, ConfigStore, submit_config};
+    /// use next_config::{Config, ConfigStore};
     /// use serde::{Deserialize, Serialize};
     ///
-    /// #[derive(Debug, Default, Serialize, Deserialize)]
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "database.toml")]
     /// struct DatabaseConfig {
     ///     host: String,
     /// }
-    ///
-    /// impl Config for DatabaseConfig {
-    ///     const VERSION: u32 = 1;
-    ///     const FILE_NAME: &'static str = "database.toml";
-    /// }
-    ///
-    /// submit_config!(DatabaseConfig);
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut store = ConfigStore::init("./config")?;
@@ -348,8 +328,7 @@ impl ConfigStore {
     ///
     /// # Type Parameters
     ///
-    /// * `T` - The configuration type to update. Must implement [`Config`] and
-    ///   have been registered with [`submit_config!`](crate::submit_config).
+    /// * `T` - The configuration type to update. Must implement [`Config`](crate::Config)
     /// * `F` - The update function type.
     ///
     /// # Arguments
@@ -379,21 +358,15 @@ impl ConfigStore {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use next_config::{Config, ConfigStore, submit_config, error::Error};
+    /// use next_config::{Config, ConfigStore, error::Error};
     /// use serde::{Deserialize, Serialize};
     ///
-    /// #[derive(Debug, Default, Serialize, Deserialize)]
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "server.toml")]
     /// struct ServerConfig {
     ///     port: u16,
     ///     max_connections: u32,
     /// }
-    ///
-    /// impl Config for ServerConfig {
-    ///     const VERSION: u32 = 1;
-    ///     const FILE_NAME: &'static str = "server.toml";
-    /// }
-    ///
-    /// submit_config!(ServerConfig);
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut store = ConfigStore::init("./config")?;
@@ -463,12 +436,15 @@ mod tests {
         value: u32,
     }
 
-    impl crate::Config for StoreTestConfig {
+    impl Config for StoreTestConfig {
         const VERSION: u32 = 1;
         const FILE_NAME: &'static str = "store_test.toml";
     }
 
-    crate::submit_config!(StoreTestConfig);
+    // Manual inventory submission
+    ::inventory::submit! {
+        crate::RegisteredConfig::new::<StoreTestConfig>()
+    }
 
     fn temp_config_dir() -> TempDir {
         tempfile::tempdir().expect("Failed to create temp directory")
@@ -499,7 +475,7 @@ mod tests {
         field: String,
     }
 
-    impl crate::Config for UnregisteredStoreConfig {
+    impl Config for UnregisteredStoreConfig {
         const VERSION: u32 = 1;
         const FILE_NAME: &'static str = "unregistered_store.toml";
     }

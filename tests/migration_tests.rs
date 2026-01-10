@@ -1,6 +1,6 @@
 //! Integration tests for config migrations.
 
-use next_config::{Config, ConfigStore, Migration, error::Error, submit_config, submit_migration};
+use next_config::{Config, ConfigStore, Migration, error::Error, submit_migration};
 use serde::{Deserialize, Serialize};
 use serde_value::Value;
 use std::fs;
@@ -11,17 +11,12 @@ fn temp_config_dir() -> TempDir {
     tempfile::tempdir().expect("Failed to create temp directory")
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Config)]
+#[config(version = 2, file_name = "migratable.toml")]
 struct MigratableConfig {
     name: String,
     value: u32,
     new_field: String, // Added in version 2
-}
-
-impl Config for MigratableConfig {
-    const VERSION: u32 = 2;
-    const FILE_NAME: &'static str = "migratable.toml";
 }
 
 impl Default for MigratableConfig {
@@ -50,7 +45,6 @@ impl Migration for MigratableConfigV1ToV2 {
     }
 }
 
-submit_config!(MigratableConfig);
 submit_migration!(MigratableConfig, MigratableConfigV1ToV2);
 
 #[test]
@@ -119,17 +113,12 @@ new_field = "already_set"
     assert_eq!(config.new_field, "already_set");
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Config)]
+#[config(version = 3, file_name = "multi_migration.toml")]
 struct MultiMigrationConfig {
     name: String,
     timeout: u32,    // Added in v2
     max_retries: u8, // Added in v3
-}
-
-impl Config for MultiMigrationConfig {
-    const VERSION: u32 = 3;
-    const FILE_NAME: &'static str = "multi_migration.toml";
 }
 
 impl Default for MultiMigrationConfig {
@@ -174,7 +163,6 @@ impl Migration for MultiMigrationV2ToV3 {
     }
 }
 
-submit_config!(MultiMigrationConfig);
 submit_migration!(MultiMigrationConfig, MultiMigrationV1ToV2);
 submit_migration!(MultiMigrationConfig, MultiMigrationV2ToV3);
 
@@ -251,17 +239,12 @@ timeout = 120
     );
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Config)]
+#[config(version = 2, file_name = "transform.toml")]
 struct TransformConfig {
     // In v1 this was "hostname", renamed to "host" in v2
     host: String,
     port: u16,
-}
-
-impl Config for TransformConfig {
-    const VERSION: u32 = 2;
-    const FILE_NAME: &'static str = "transform.toml";
 }
 
 impl Default for TransformConfig {
@@ -289,7 +272,6 @@ impl Migration for TransformConfigV1ToV2 {
     }
 }
 
-submit_config!(TransformConfig);
 submit_migration!(TransformConfig, TransformConfigV1ToV2);
 
 #[test]

@@ -10,29 +10,22 @@
 //! 1. **The [`Config`] trait**: Defines the interface that all config types must implement
 //! 2. **Type-erased storage**: [`AnyConfig`] and [`ConfigData<T>`] enable storing different
 //!    config types in a single collection
-//! 3. **Compile-time registration**: The [`submit_config!`](crate::submit_config) macro
+//! 3. **Compile-time registration**: The [`Config`](crate::Config) derive macro
 //!    registers config types using the [`inventory`] crate
 //!
 //! # Example
 //!
 //! ```rust
-//! use next_config::{Config, submit_config};
+//! use next_config::Config;
 //! use serde::{Deserialize, Serialize};
 //!
-//! #[derive(Debug, Default, Serialize, Deserialize)]
+//! #[derive(Debug, Default, Serialize, Deserialize, Config)]
+//! #[config(version = 1, file_name = "database.toml")]
 //! struct DatabaseConfig {
 //!     host: String,
 //!     port: u16,
 //!     max_connections: u32,
 //! }
-//!
-//! impl Config for DatabaseConfig {
-//!     const VERSION: u32 = 1;
-//!     const FILE_NAME: &'static str = "database.toml";
-//! }
-//!
-//! // Register the config type
-//! submit_config!(DatabaseConfig);
 //! ```
 
 use crate::{
@@ -375,30 +368,24 @@ impl<T: Config> Default for ConfigData<T> {
 
 /// A descriptor for a registered configuration type.
 ///
-/// This struct is created by the [`submit_config!`](crate::submit_config) macro
+/// This struct is created by the [`Config`](crate::Config) derive macro
 /// and collected at runtime by the [`inventory`] crate. It provides factory
 /// functions for creating config instances and identifying config types.
 ///
 /// # Usage
 ///
-/// You should not create this struct directly. Instead, use the `submit_config!` macro:
+/// You should not create this struct directly. Instead, use the `#[derive(Config)]` macro:
 ///
 /// ```rust
-/// use next_config::{Config, submit_config};
+/// use next_config::Config;
 /// use serde::{Deserialize, Serialize};
 ///
-/// #[derive(Debug, Default, Serialize, Deserialize)]
+/// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+/// #[config(version = 1, file_name = "my_config.toml")]
 /// struct MyConfig {
 ///     value: i32,
 /// }
-///
-/// impl Config for MyConfig {
-///     const VERSION: u32 = 1;
-///     const FILE_NAME: &'static str = "my_config.toml";
-/// }
-///
-/// // This creates and registers a RegisteredConfig
-/// submit_config!(MyConfig);
+/// // RegisteredConfig is automatically created and registered
 /// ```
 pub struct RegisteredConfig {
     /// Factory function that creates a new boxed config instance.
@@ -427,52 +414,6 @@ impl RegisteredConfig {
 
 // Collect all registered configs using the inventory crate
 inventory::collect!(RegisteredConfig);
-
-/// Registers a configuration type with the global registry.
-///
-/// This macro must be called for each config type you want to use with
-/// [`ConfigStore`](crate::ConfigStore). It creates a static registration
-/// that is collected at runtime.
-///
-/// # Arguments
-///
-/// * `$config_type` - The type implementing [`Config`] to register
-///
-/// # Example
-///
-/// ```rust
-/// use next_config::{Config, submit_config};
-/// use serde::{Deserialize, Serialize};
-///
-/// #[derive(Debug, Default, Serialize, Deserialize)]
-/// struct ServerConfig {
-///     host: String,
-///     port: u16,
-/// }
-///
-/// impl Config for ServerConfig {
-///     const VERSION: u32 = 1;
-///     const FILE_NAME: &'static str = "server.toml";
-/// }
-///
-/// // Register at module scope
-/// submit_config!(ServerConfig);
-/// ```
-///
-/// # Note
-///
-/// The macro invocation should be at module scope (not inside a function)
-/// to ensure the registration happens at program startup. While it will
-/// work inside functions in some cases, this is not guaranteed to work
-/// in all scenarios due to how static initialization works in Rust.
-#[macro_export]
-macro_rules! submit_config {
-    ($config_type:ty) => {
-        ::inventory::submit! {
-            $crate::RegisteredConfig::new::<$config_type>()
-        }
-    };
-}
 
 #[cfg(test)]
 mod tests {
