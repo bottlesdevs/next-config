@@ -111,7 +111,7 @@ impl ConfigStore {
     /// Creates a new configuration store with the specified config directory.
     ///
     /// This method initializes the store by collecting all config types that
-    /// were registered using [`submit_config!`](crate::submit_config). The
+    /// were registered using [`#[derive(Config)]`](crate::Config). The
     /// configs are not loaded from disk at this point—you must call
     /// [`load_all`](ConfigStore::load_all) or [`load`](ConfigStore::load) to
     /// actually read the configuration files.
@@ -163,7 +163,7 @@ impl ConfigStore {
     /// # Type Parameters
     ///
     /// * `T` - The configuration type to retrieve. Must implement [`Config`]
-    ///   and have been registered with [`submit_config!`](crate::submit_config).
+    ///   and have been registered with [`#[derive(Config)]`](crate::Config).
     ///
     /// # Returns
     ///
@@ -273,7 +273,7 @@ impl ConfigStore {
     /// Loads all registered configuration types from disk.
     ///
     /// This method iterates over all config types registered with
-    /// [`submit_config!`](crate::submit_config) and loads each one. For each
+    /// [`#[derive(Config)]`](crate::Config) and loads each one. For each
     /// config, if the file doesn't exist, a new one with default values is
     /// created. If a file exists but is an older version, migrations are
     /// applied automatically.

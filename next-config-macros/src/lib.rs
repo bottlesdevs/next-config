@@ -84,7 +84,7 @@ impl ConfigOptions {
 ///
 /// This macro automatically:
 /// - Implements the `Config` trait with the specified version and file name
-/// - Registers the config type with `inventory` (replaces `submit_config!`)
+/// - Registers the config type with `inventory`
 ///
 ///
 /// # Example
