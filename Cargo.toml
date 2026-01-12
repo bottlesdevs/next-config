@@ -11,6 +11,7 @@ next-config-macros = { path = "./next-config-macros" }
 serde.workspace = true
 serde-value.workspace = true
 thiserror.workspace = true
+derive_builder.workspace = true
 toml = "0.9.10"
 
 [dev-dependencies]
