@@ -366,55 +366,6 @@ impl<T: Config> Default for ConfigData<T> {
     }
 }
 
-/// A descriptor for a registered configuration type.
-///
-/// This struct is created by the [`Config`](crate::Config) derive macro
-/// and collected at runtime by the [`inventory`] crate. It provides factory
-/// functions for creating config instances and identifying config types.
-///
-/// # Usage
-///
-/// You should not create this struct directly. Instead, use the `#[derive(Config)]` macro:
-///
-/// ```rust
-/// use next_config::Config;
-/// use serde::{Deserialize, Serialize};
-///
-/// #[derive(Debug, Default, Serialize, Deserialize, Config)]
-/// #[config(version = 1, file_name = "my_config.toml")]
-/// struct MyConfig {
-///     value: i32,
-/// }
-/// // RegisteredConfig is automatically created and registered
-/// ```
-pub struct RegisteredConfig {
-    /// Factory function that creates a new boxed config instance.
-    pub config: fn() -> Box<dyn AnyConfig>,
-
-    /// Function that returns the [`TypeId`] of the config type.
-    pub id: fn() -> TypeId,
-}
-
-impl RegisteredConfig {
-    /// Creates a new `RegisteredConfig` for the given config type.
-    ///
-    /// This is a `const fn` to allow usage in static contexts required
-    /// by the [`inventory`] crate.
-    ///
-    /// # Type Parameters
-    ///
-    /// * `T` - The config type to register (must implement [`Config`])
-    pub const fn new<T: Config>() -> Self {
-        Self {
-            config: || Box::new(ConfigData::<T>::default()),
-            id: || TypeId::of::<T>(),
-        }
-    }
-}
-
-// Collect all registered configs using the inventory crate
-inventory::collect!(RegisteredConfig);
-
 #[cfg(test)]
 mod tests {
     use super::*;

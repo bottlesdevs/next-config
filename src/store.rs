@@ -53,8 +53,7 @@ use std::{
 };
 
 use crate::{
-    RegisteredConfig,
-    config::{AnyConfig, Config},
+    config::{AnyConfig, Config, ConfigData},
     error::Error,
 };
 
@@ -144,15 +143,61 @@ impl ConfigStore {
     /// The directory does not need to exist when calling `init`. If it doesn't
     /// exist, loading will fail unless the directory is created before loading.
     pub fn init(conf_dir: impl AsRef<Path>) -> Result<Self, Error> {
-        let mut configs = HashMap::new();
-        for registration in inventory::iter::<RegisteredConfig> {
-            configs.insert((registration.id)(), (registration.config)());
-        }
-
         Ok(Self {
-            configs,
+            configs: HashMap::new(),
             conf_dir: conf_dir.as_ref().to_path_buf(),
         })
+    }
+
+    /// Registers a configuration type with the store.
+    ///
+    /// This method manually registers a configuration type so it can be loaded
+    /// and accessed later. If the type is already registered, this method does
+    /// nothing (it won't overwrite an existing registration).
+    ///
+    /// # Type Parameters
+    ///
+    /// * `T` - The configuration type to register. Must implement [`Config`](crate::Config).
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use next_config::{Config, ConfigStore};
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "app.toml")]
+    /// struct AppConfig {
+    ///     name: String,
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut store = ConfigStore::init("./config")?;
+    ///
+    /// // Register the config type
+    /// store.register::<AppConfig>()?;
+    ///
+    /// // Now you can load and access it
+    /// store.load_all()?;
+    /// let config = store.get::<AppConfig>()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # See Also
+    ///
+    /// - [`load`](ConfigStore::load) - Load a specific config after registration
+    /// - [`load_all`](ConfigStore::load_all) - Load all registered configs
+    pub fn register<T: Config>(&mut self) -> Result<(), Error> {
+        self.configs
+            .entry(TypeId::of::<T>())
+            .or_insert(Box::new(ConfigData::<T>::default()));
+
+        Ok(())
     }
 
     /// Returns a reference to a loaded configuration.
@@ -441,11 +486,6 @@ mod tests {
         const FILE_NAME: &'static str = "store_test.toml";
     }
 
-    // Manual inventory submission
-    ::inventory::submit! {
-        crate::RegisteredConfig::new::<StoreTestConfig>()
-    }
-
     fn temp_config_dir() -> TempDir {
         tempfile::tempdir().expect("Failed to create temp directory")
     }
@@ -460,7 +500,10 @@ mod tests {
     #[test]
     fn test_init_collects_registered_configs() {
         let temp_dir = temp_config_dir();
-        let store = ConfigStore::init(temp_dir.path()).unwrap();
+        let mut store = ConfigStore::init(temp_dir.path()).unwrap();
+        store
+            .register::<StoreTestConfig>()
+            .expect("Failed to register config");
 
         // Should have at least the StoreTestConfig registered
         let type_id = TypeId::of::<StoreTestConfig>();
@@ -492,7 +535,10 @@ mod tests {
     #[test]
     fn test_configs_map_uses_type_id_as_key() {
         let temp_dir = temp_config_dir();
-        let store = ConfigStore::init(temp_dir.path()).unwrap();
+        let mut store = ConfigStore::init(temp_dir.path()).unwrap();
+        store
+            .register::<StoreTestConfig>()
+            .expect("Failed to register config");
 
         // Verify that TypeId is used as key
         let type_id = TypeId::of::<StoreTestConfig>();

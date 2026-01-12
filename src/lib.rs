@@ -109,7 +109,7 @@ pub mod error;
 mod migration;
 mod store;
 
-pub use config::{Config, RegisteredConfig};
+pub use config::Config;
 pub use migration::{Migration, RegisteredMigration};
 pub use store::ConfigStore;
 

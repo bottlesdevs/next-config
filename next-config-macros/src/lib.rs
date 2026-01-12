@@ -137,10 +137,6 @@ fn derive_config_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
             const VERSION: u32 = #version;
             const FILE_NAME: &'static str = #file_name;
         }
-
-        ::inventory::submit! {
-            ::next_config::RegisteredConfig::new::<#name>()
-        }
     };
 
     Ok(config_impl)

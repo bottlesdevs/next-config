@@ -62,6 +62,9 @@ value = 50
 
     let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
     store
+        .register::<MigratableConfig>()
+        .expect("Failed to register config");
+    store
         .load::<MigratableConfig>()
         .expect("Failed to load config");
 
@@ -99,6 +102,9 @@ new_field = "already_set"
     fs::write(&config_path, v2_content).expect("Failed to write config file");
 
     let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
+    store
+        .register::<MigratableConfig>()
+        .expect("Failed to register config");
     store
         .load::<MigratableConfig>()
         .expect("Failed to load config");
@@ -180,6 +186,9 @@ name = "legacy_config"
 
     let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
     store
+        .register::<MultiMigrationConfig>()
+        .expect("Failed to register config");
+    store
         .load::<MultiMigrationConfig>()
         .expect("Failed to load config");
 
@@ -216,6 +225,9 @@ timeout = 120
     fs::write(&config_path, v2_content).expect("Failed to write config file");
 
     let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
+    store
+        .register::<MultiMigrationConfig>()
+        .expect("Failed to register config");
     store
         .load::<MultiMigrationConfig>()
         .expect("Failed to load config");
@@ -289,6 +301,9 @@ port = 443
 
     let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
     store
+        .register::<TransformConfig>()
+        .expect("Failed to register config");
+    store
         .load::<TransformConfig>()
         .expect("Failed to load config");
 
@@ -325,6 +340,9 @@ value = 100
     fs::write(&config_path, content).expect("Failed to write config file");
 
     let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
+    store
+        .register::<MigratableConfig>()
+        .expect("Failed to register config");
     store
         .load::<MigratableConfig>()
         .expect("Failed to load config");
