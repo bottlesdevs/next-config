@@ -28,7 +28,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize the config store
     // This collects all registered config types but doesn't load them yet
-    let mut store = ConfigStore::init(config_dir)?;
+    let mut store = ConfigStore::builder()
+        .register::<AppConfig>()?
+        .init(config_dir);
 
     // Load all registered configs from disk
     // If a config file doesn't exist, it will be created with default values

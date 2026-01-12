@@ -56,7 +56,9 @@ max_connections = 1000
     std::fs::write(&config_path, v1_config)?;
 
     // Create a new store and load - this will trigger migration
-    let mut store = ConfigStore::init(config_dir)?;
+    let mut store = ConfigStore::builder()
+        .register::<ServerConfig>()?
+        .init(config_dir);
     store.load::<ServerConfig>()?;
 
     let migrated_config = store.get::<ServerConfig>()?;

@@ -1,6 +1,6 @@
 use next_config::{Config, ConfigStore, error::Error};
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::{fs, path::Path};
 use tempfile::TempDir;
 
 /// Helper to create a temporary directory for tests
@@ -84,19 +84,23 @@ impl Default for ComplexConfig {
     }
 }
 
+fn build_config_store(path: &Path) -> Result<ConfigStore, Error> {
+    Ok(ConfigStore::builder()
+        .register::<BasicConfig>()?
+        .register::<ComplexConfig>()?
+        .init(path))
+}
+
 #[test]
 fn test_load_creates_default_config_file() {
     let temp_dir = temp_config_dir();
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
 
-    let config_path = temp_dir.path().join("basic.toml");
+    let config_path = store.config_dir().join("basic.toml");
     assert!(
         !config_path.exists(),
         "Config file should not exist before loading"
     );
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
     store.load::<BasicConfig>().expect("Failed to load config");
     assert!(
         config_path.exists(),
@@ -107,7 +111,8 @@ fn test_load_creates_default_config_file() {
 #[test]
 fn test_load_existing_config_file() {
     let temp_dir = temp_config_dir();
-    let config_path = temp_dir.path().join("basic.toml");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
+    let config_path = store.config_dir().join("basic.toml");
 
     let content = r#"
 _version = 1
@@ -117,10 +122,6 @@ enabled = false
 "#;
     fs::write(&config_path, content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
     store.load::<BasicConfig>().expect("Failed to load config");
 
     let config = store.get::<BasicConfig>().expect("Failed to get config");
@@ -132,10 +133,7 @@ enabled = false
 #[test]
 fn test_load_all_configs() {
     let temp_dir = temp_config_dir();
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
 
     let result = store.load_all();
     assert!(result.is_ok(), "load_all should succeed");
@@ -147,7 +145,8 @@ fn test_load_all_configs() {
 #[test]
 fn test_config_without_version_defaults_to_v1() {
     let temp_dir = temp_config_dir();
-    let config_path = temp_dir.path().join("basic.toml");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
+    let config_path = store.config_dir().join("basic.toml");
 
     // Write a config without _version field
     let content = r#"
@@ -157,10 +156,6 @@ enabled = true
 "#;
     fs::write(&config_path, content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
     store.load::<BasicConfig>().expect("Failed to load config");
 
     let config = store.get::<BasicConfig>().expect("Failed to get config");
@@ -178,10 +173,7 @@ enabled = true
 #[test]
 fn test_get_config_returns_correct_values() {
     let temp_dir = temp_config_dir();
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
     store.load::<BasicConfig>().expect("Failed to load config");
 
     let config = store.get::<BasicConfig>().expect("Failed to get config");
@@ -194,7 +186,7 @@ fn test_get_config_returns_correct_values() {
 #[test]
 fn test_get_unregistered_config_returns_error() {
     let temp_dir = temp_config_dir();
-    let store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
+    let store = build_config_store(temp_dir.path()).expect("Failed to build config store");
 
     let result = store.get::<UnregisteredConfig>();
     assert!(result.is_err(), "Getting unregistered config should fail");
@@ -209,10 +201,7 @@ fn test_get_unregistered_config_returns_error() {
 #[test]
 fn test_update_config_persists_changes() {
     let temp_dir = temp_config_dir();
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
     store.load::<BasicConfig>().expect("Failed to load config");
 
     store
@@ -231,10 +220,7 @@ fn test_update_config_persists_changes() {
     assert!(!config.enabled);
 
     // Verify on disk by reloading
-    let mut new_store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    new_store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
+    let mut new_store = build_config_store(temp_dir.path()).expect("Failed to build config store");
     new_store
         .load::<BasicConfig>()
         .expect("Failed to load config");
@@ -250,10 +236,7 @@ fn test_update_config_persists_changes() {
 #[test]
 fn test_multiple_sequential_updates() {
     let temp_dir = temp_config_dir();
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
     store.load::<BasicConfig>().expect("Failed to load config");
 
     for i in 0..5 {
@@ -272,10 +255,7 @@ fn test_multiple_sequential_updates() {
 #[test]
 fn test_atomic_save_creates_no_temp_files() {
     let temp_dir = temp_config_dir();
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
     store.load::<BasicConfig>().expect("Failed to load config");
 
     store
@@ -286,7 +266,7 @@ fn test_atomic_save_creates_no_temp_files() {
         .expect("Failed to update config");
 
     // Check that no .tmp files remain
-    let entries: Vec<_> = fs::read_dir(temp_dir.path())
+    let entries: Vec<_> = fs::read_dir(store.config_dir())
         .expect("Failed to read dir")
         .filter_map(|e| e.ok())
         .collect();
@@ -304,7 +284,8 @@ fn test_atomic_save_creates_no_temp_files() {
 #[test]
 fn test_missing_fields_get_defaults_with_serde_default() {
     let temp_dir = temp_config_dir();
-    let config_path = temp_dir.path().join("basic.toml");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
+    let config_path = store.config_dir().join("basic.toml");
 
     let partial_content = r#"
 _version = 1
@@ -312,10 +293,6 @@ name = "partial"
 "#;
     fs::write(&config_path, partial_content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<BasicConfig>()
-        .expect("Failed to register config");
     store.load::<BasicConfig>().expect("Failed to load config");
 
     let config = store.get::<BasicConfig>().expect("Failed to get config");
@@ -330,7 +307,8 @@ name = "partial"
 #[test]
 fn test_missing_fields_without_serde_default_fails() {
     let temp_dir = temp_config_dir();
-    let config_path = temp_dir.path().join("strict.toml");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
+    let config_path = store.config_dir().join("basic.toml");
 
     let partial_content = r#"
 _version = 1
@@ -338,7 +316,6 @@ required_field = "present"
 "#;
     fs::write(&config_path, partial_content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
     let result = store.load::<StrictConfig>();
 
     assert!(
@@ -350,10 +327,7 @@ required_field = "present"
 #[test]
 fn test_complex_nested_config() {
     let temp_dir = temp_config_dir();
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<ComplexConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
     store
         .load::<ComplexConfig>()
         .expect("Failed to load config");
@@ -369,10 +343,7 @@ fn test_complex_nested_config() {
 #[test]
 fn test_update_nested_config() {
     let temp_dir = temp_config_dir();
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<ComplexConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to build config store");
     store
         .load::<ComplexConfig>()
         .expect("Failed to load config");
@@ -387,10 +358,7 @@ fn test_update_nested_config() {
         .expect("Failed to update config");
 
     // Reload and verify
-    let mut new_store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    new_store
-        .register::<ComplexConfig>()
-        .expect("Failed to register config");
+    let mut new_store = build_config_store(temp_dir.path()).expect("Failed to build config store");
     new_store
         .load::<ComplexConfig>()
         .expect("Failed to load config");

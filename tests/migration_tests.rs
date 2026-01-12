@@ -3,12 +3,20 @@
 use next_config::{Config, ConfigStore, Migration, error::Error, submit_migration};
 use serde::{Deserialize, Serialize};
 use serde_value::Value;
-use std::fs;
+use std::{fs, path::Path};
 use tempfile::TempDir;
 
 /// Helper to create a temporary directory for tests
 fn temp_config_dir() -> TempDir {
     tempfile::tempdir().expect("Failed to create temp directory")
+}
+
+fn build_config_store(path: &Path) -> Result<ConfigStore, Error> {
+    Ok(ConfigStore::builder()
+        .register::<MigratableConfig>()?
+        .register::<TransformConfig>()?
+        .register::<MultiMigrationConfig>()?
+        .init(path))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Config)]
@@ -60,10 +68,7 @@ value = 50
 "#;
     fs::write(&config_path, v1_content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<MigratableConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to create store");
     store
         .load::<MigratableConfig>()
         .expect("Failed to load config");
@@ -101,10 +106,7 @@ new_field = "already_set"
 "#;
     fs::write(&config_path, v2_content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<MigratableConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to create store");
     store
         .load::<MigratableConfig>()
         .expect("Failed to load config");
@@ -184,10 +186,7 @@ name = "legacy_config"
 "#;
     fs::write(&config_path, v1_content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<MultiMigrationConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to create store");
     store
         .load::<MultiMigrationConfig>()
         .expect("Failed to load config");
@@ -224,10 +223,7 @@ timeout = 120
 "#;
     fs::write(&config_path, v2_content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<MultiMigrationConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to create store");
     store
         .load::<MultiMigrationConfig>()
         .expect("Failed to load config");
@@ -299,10 +295,7 @@ port = 443
 "#;
     fs::write(&config_path, v1_content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<TransformConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to create store");
     store
         .load::<TransformConfig>()
         .expect("Failed to load config");
@@ -339,10 +332,7 @@ value = 100
 "#;
     fs::write(&config_path, content).expect("Failed to write config file");
 
-    let mut store = ConfigStore::init(temp_dir.path()).expect("Failed to create store");
-    store
-        .register::<MigratableConfig>()
-        .expect("Failed to register config");
+    let mut store = build_config_store(temp_dir.path()).expect("Failed to create store");
     store
         .load::<MigratableConfig>()
         .expect("Failed to load config");

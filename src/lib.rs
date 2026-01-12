@@ -33,7 +33,9 @@
 //! # struct AppConfig { name: String, port: u16, debug: bool }
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Initialize the store with a config directory
-//!     let mut store = ConfigStore::init("./config")?;
+//!     let mut store = ConfigStore::builder()
+//!         .register::<AppConfig>()?
+//!         .init("./config");
 //!
 //!     // Load all registered configs from disk
 //!     store.load_all()?;

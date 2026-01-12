@@ -95,8 +95,8 @@ pub trait Config: Default + Send + Sync + Serialize + DeserializeOwned + 'static
     /// The filename for this configuration file.
     ///
     /// This should be a simple filename (not a path) ending in `.toml`.
-    /// The file will be created in the directory passed to
-    /// [`ConfigStore::init`](crate::ConfigStore::init).
+    /// The file will be created in the config directory passed to the
+    /// builder's `init` method.
     ///
     /// # Example
     ///

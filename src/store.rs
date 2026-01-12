@@ -27,8 +27,10 @@
 //! }
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create a store pointing to the config directory
-//!     let mut store = ConfigStore::init("./config")?;
+//!     // Create a store using the builder pattern
+//!     let mut store = ConfigStore::builder()
+//!         .register::<AppConfig>()?
+//!         .init("./config");
 //!
 //!     // Load all registered configs
 //!     store.load_all()?;
@@ -52,6 +54,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use derive_builder::Builder;
+
 use crate::{
     config::{AnyConfig, Config, ConfigData},
     error::Error,
@@ -71,7 +75,8 @@ use crate::{
 ///
 /// A typical usage pattern is:
 ///
-/// 1. **Initialize**: Create a store with [`init`](ConfigStore::init)
+/// 1. **Build**: Create a store with [`ConfigStore::builder()`](ConfigStore::builder),
+///    register configs, and call `init`
 /// 2. **Load**: Load configs with [`load_all`](ConfigStore::load_all) or [`load`](ConfigStore::load)
 /// 3. **Access**: Read configs with [`get`](ConfigStore::get)
 /// 4. **Update**: Modify configs with [`update`](ConfigStore::update)
@@ -90,7 +95,9 @@ use crate::{
 /// }
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let mut store = ConfigStore::init("/etc/myapp")?;
+/// let mut store = ConfigStore::builder()
+///     .register::<DatabaseConfig>()?
+///     .init("/etc/myapp");
 /// store.load_all()?;
 ///
 /// let db_config = store.get::<DatabaseConfig>()?;
@@ -98,57 +105,19 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
+#[derive(Builder)]
+#[builder(pattern = "owned", build_fn(skip))]
 pub struct ConfigStore {
     /// The directory where configuration files are stored.
+    #[builder(setter(skip))]
     conf_dir: PathBuf,
 
     /// Map from config type IDs to their type-erased instances.
+    #[builder(setter(custom), field(ty = "HashMap<TypeId, Box<dyn AnyConfig>>"))]
     configs: HashMap<TypeId, Box<dyn AnyConfig>>,
 }
 
-impl ConfigStore {
-    /// Creates a new configuration store with the specified config directory.
-    ///
-    /// This method initializes the store by collecting all config types that
-    /// were registered using [`#[derive(Config)]`](crate::Config). The
-    /// configs are not loaded from disk at this point—you must call
-    /// [`load_all`](ConfigStore::load_all) or [`load`](ConfigStore::load) to
-    /// actually read the configuration files.
-    ///
-    /// # Arguments
-    ///
-    /// * `conf_dir` - The directory path where configuration files are stored.
-    ///   This can be an absolute or relative path.
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    /// use next_config::ConfigStore;
-    ///
-    /// // Using a relative path
-    /// let store = ConfigStore::init("./config")?;
-    ///
-    /// // Using an absolute path
-    /// let store = ConfigStore::init("/etc/myapp")?;
-    ///
-    /// // Using a PathBuf
-    /// use std::path::PathBuf;
-    /// let path = PathBuf::from("config");
-    /// let store = ConfigStore::init(&path)?;
-    /// # Ok::<(), next_config::error::Error>(())
-    /// ```
-    ///
-    /// # Note
-    ///
-    /// The directory does not need to exist when calling `init`. If it doesn't
-    /// exist, loading will fail unless the directory is created before loading.
-    pub fn init(conf_dir: impl AsRef<Path>) -> Result<Self, Error> {
-        Ok(Self {
-            configs: HashMap::new(),
-            conf_dir: conf_dir.as_ref().to_path_buf(),
-        })
-    }
-
+impl ConfigStoreBuilder {
     /// Registers a configuration type with the store.
     ///
     /// This method manually registers a configuration type so it can be loaded
@@ -176,10 +145,10 @@ impl ConfigStore {
     /// }
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut store = ConfigStore::init("./config")?;
-    ///
-    /// // Register the config type
-    /// store.register::<AppConfig>()?;
+    /// // Register the config type during store construction
+    /// let mut store = ConfigStore::builder()
+    ///     .register::<AppConfig>()?
+    ///     .init("./config");
     ///
     /// // Now you can load and access it
     /// store.load_all()?;
@@ -192,12 +161,129 @@ impl ConfigStore {
     ///
     /// - [`load`](ConfigStore::load) - Load a specific config after registration
     /// - [`load_all`](ConfigStore::load_all) - Load all registered configs
-    pub fn register<T: Config>(&mut self) -> Result<(), Error> {
+    pub fn register<T: Config>(mut self) -> Result<Self, Error> {
         self.configs
             .entry(TypeId::of::<T>())
             .or_insert(Box::new(ConfigData::<T>::default()));
 
-        Ok(())
+        Ok(self)
+    }
+
+    /// Finalizes the builder and creates a [`ConfigStore`] with the specified config directory.
+    ///
+    /// This method consumes the builder and creates the store with all
+    /// registered config types. The configs are not loaded from disk at this
+    /// point—you must call [`load_all`](ConfigStore::load_all) or
+    /// [`load`](ConfigStore::load) to actually read the configuration files.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_dir` - The directory path where configuration files are stored.
+    ///   This can be an absolute or relative path.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use next_config::{Config, ConfigStore};
+    /// use serde::{Deserialize, Serialize};
+    /// use std::path::PathBuf;
+    ///
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "app.toml")]
+    /// struct AppConfig {
+    ///     name: String,
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// // Using a relative path
+    /// let store = ConfigStore::builder()
+    ///     .register::<AppConfig>()?
+    ///     .init("./config");
+    ///
+    /// // Using an absolute path
+    /// let store = ConfigStore::builder()
+    ///     .register::<AppConfig>()?
+    ///     .init("/etc/myapp");
+    ///
+    /// // Using a PathBuf
+    /// let path = PathBuf::from("config");
+    /// let store = ConfigStore::builder()
+    ///     .register::<AppConfig>()?
+    ///     .init(&path);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// The directory does not need to exist when calling `init`. If it doesn't
+    /// exist, loading will fail unless the directory is created before loading.
+    pub fn init(self, config_dir: impl AsRef<Path>) -> ConfigStore {
+        ConfigStore {
+            conf_dir: config_dir.as_ref().to_path_buf(),
+            configs: self.configs,
+        }
+    }
+}
+
+impl ConfigStore {
+    /// Creates a new builder for constructing a `ConfigStore`.
+    ///
+    /// This is the starting point for building a configuration store using
+    /// the builder pattern. Use the returned builder to register config types
+    /// and then finalize with `init`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use next_config::{Config, ConfigStore};
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "app.toml")]
+    /// struct AppConfig {
+    ///     name: String,
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut store = ConfigStore::builder()
+    ///     .register::<AppConfig>()?
+    ///     .init("./config");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn builder() -> ConfigStoreBuilder {
+        ConfigStoreBuilder::default()
+    }
+
+    /// Returns the path to the configuration directory.
+    ///
+    /// This is the directory where all configuration files are stored,
+    /// as specified when the store was created via `init`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use next_config::{Config, ConfigStore};
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "app.toml")]
+    /// struct AppConfig {
+    ///     name: String,
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let store = ConfigStore::builder()
+    ///     .register::<AppConfig>()?
+    ///     .init("./config");
+    ///
+    /// println!("Configs stored in: {:?}", store.config_dir());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn config_dir(&self) -> &Path {
+        &self.conf_dir
     }
 
     /// Returns a reference to a loaded configuration.
@@ -235,7 +321,9 @@ impl ConfigStore {
     /// }
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut store = ConfigStore::init("./config")?;
+    /// let mut store = ConfigStore::builder()
+    ///     .register::<AppConfig>()?
+    ///     .init("./config");
     /// store.load_all()?;  // Must load before get!
     ///
     /// let config = store.get::<AppConfig>()?;
@@ -292,7 +380,9 @@ impl ConfigStore {
     /// }
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut store = ConfigStore::init("./config")?;
+    /// let mut store = ConfigStore::builder()
+    ///     .register::<DatabaseConfig>()?
+    ///     .init("./config");
     ///
     /// // Load only the database config
     /// store.load::<DatabaseConfig>()?;
@@ -341,10 +431,19 @@ impl ConfigStore {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use next_config::ConfigStore;
+    /// use next_config::{Config, ConfigStore};
+    /// use serde::{Deserialize, Serialize};
+    ///
+    /// #[derive(Debug, Default, Serialize, Deserialize, Config)]
+    /// #[config(version = 1, file_name = "app.toml")]
+    /// struct AppConfig {
+    ///     name: String,
+    /// }
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut store = ConfigStore::init("./config")?;
+    /// let mut store = ConfigStore::builder()
+    ///     .register::<AppConfig>()?
+    ///     .init("./config");
     ///
     /// // Load all registered configs
     /// store.load_all()?;
@@ -414,7 +513,9 @@ impl ConfigStore {
     /// }
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut store = ConfigStore::init("./config")?;
+    /// let mut store = ConfigStore::builder()
+    ///     .register::<ServerConfig>()?
+    ///     .init("./config");
     /// store.load_all()?;
     ///
     /// // Simple update
@@ -490,20 +591,22 @@ mod tests {
         tempfile::tempdir().expect("Failed to create temp directory")
     }
 
+    fn build_config_store() -> Result<ConfigStore, Error> {
+        let temp_dir = temp_config_dir();
+        Ok(ConfigStore::builder()
+            .register::<StoreTestConfig>()?
+            .init(temp_dir.path()))
+    }
+
     #[test]
     fn test_config_store_initialization() {
-        let temp_dir = temp_config_dir();
-        let store = ConfigStore::init(temp_dir.path());
+        let store = build_config_store();
         assert!(store.is_ok(), "ConfigStore should initialize successfully");
     }
 
     #[test]
     fn test_init_collects_registered_configs() {
-        let temp_dir = temp_config_dir();
-        let mut store = ConfigStore::init(temp_dir.path()).unwrap();
-        store
-            .register::<StoreTestConfig>()
-            .expect("Failed to register config");
+        let store = build_config_store().expect("Failed to build config store");
 
         // Should have at least the StoreTestConfig registered
         let type_id = TypeId::of::<StoreTestConfig>();
@@ -525,20 +628,14 @@ mod tests {
 
     #[test]
     fn test_get_unregistered_returns_error() {
-        let temp_dir = temp_config_dir();
-        let store = ConfigStore::init(temp_dir.path()).unwrap();
-
+        let store = build_config_store().expect("Failed to build config store");
         let result = store.get::<UnregisteredStoreConfig>();
         assert!(matches!(result, Err(Error::UnregisteredConfig(_))));
     }
 
     #[test]
     fn test_configs_map_uses_type_id_as_key() {
-        let temp_dir = temp_config_dir();
-        let mut store = ConfigStore::init(temp_dir.path()).unwrap();
-        store
-            .register::<StoreTestConfig>()
-            .expect("Failed to register config");
+        let store = build_config_store().expect("Failed to build config store");
 
         // Verify that TypeId is used as key
         let type_id = TypeId::of::<StoreTestConfig>();
