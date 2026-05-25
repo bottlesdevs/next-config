@@ -302,7 +302,7 @@ inventory::collect!(RegisteredMigration);
 #[macro_export]
 macro_rules! submit_migration {
     ($config_type:ty, $migrator_type:ty) => {
-        ::inventory::submit! {
+        $crate::__private::inventory::submit! {
             $crate::RegisteredMigration::new::<$config_type, $migrator_type>()
         }
     };

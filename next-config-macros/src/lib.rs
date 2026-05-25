@@ -111,7 +111,7 @@ impl ConfigOptions {
 ///     const FILE_NAME: &'static str = "app.toml";
 /// }
 ///
-/// inventory::submit! {
+/// next_config::__private::inventory::submit! {
 ///     next_config::RegisteredConfig::new::<AppConfig>()
 /// }
 /// ```
@@ -136,6 +136,10 @@ fn derive_config_impl(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
         impl ::next_config::Config for #name {
             const VERSION: u32 = #version;
             const FILE_NAME: &'static str = #file_name;
+        }
+
+        ::next_config::__private::inventory::submit! {
+            ::next_config::RegisteredConfig::new::<#name>()
         }
     };
 

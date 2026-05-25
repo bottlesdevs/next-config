@@ -115,5 +115,10 @@ pub use config::Config;
 pub use migration::{Migration, RegisteredMigration};
 pub use store::ConfigStore;
 
+#[doc(hidden)]
+pub mod __private {
+    pub use inventory;
+}
+
 // Re-export the derive macro
 pub use next_config_macros::Config;
