@@ -1,124 +1,98 @@
-//! # next-config
-//!
-//! A flexible, type-safe configuration system for Rust with versioning and migrations.
-//!
-//! This crate provides a robust way to manage application configuration files with
-//! automatic versioning, schema migrations, and type-safe access patterns.
-//!
-//! ## Quick Start
-//!
-//! ### 1. Define Your Config
-//!
-//! ```rust
-//! use next_config::Config;
-//! use serde::{Serialize, Deserialize};
-//!
-//! #[derive(Debug, Default, Serialize, Deserialize, Config)]
-//! #[config(version = 1, file_name = "app.toml")]
-//! struct AppConfig {
-//!     name: String,
-//!     port: u16,
-//!     debug: bool,
-//! }
-//! ```
-//!
-//! ### 2. Use the Config Store
-//!
-//! ```rust,no_run
-//! # use next_config::Config;
-//! use next_config::ConfigStore;
-//! # use serde::{Serialize, Deserialize};
-//! # #[derive(Debug, Default, Serialize, Deserialize, Config)]
-//! # #[config(version = 1, file_name = "app.toml")]
-//! # struct AppConfig { name: String, port: u16, debug: bool }
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Initialize the store with a config directory
-//!     let mut store = ConfigStore::builder()
-//!         .register::<AppConfig>()?
-//!         .init("./config");
-//!
-//!     // Load all registered configs from disk
-//!     store.load_all()?;
-//!
-//!     // Read config immutably
-//!     let config = store.get::<AppConfig>()?;
-//!     println!("App: {} running on port {}", config.name, config.port);
-//!
-//!     // Update config (automatically saves to disk)
-//!     store.update::<AppConfig, _>(|cfg| {
-//!         cfg.port = 9090;
-//!         cfg.debug = true;
-//!         Ok(())
-//!     })?;
-//!
-//!     Ok(())
-//! }
-//! ```
-//!
-//! ## Migrations
-//!
-//! When you need to change your config schema, increment the version and define a migration:
-//!
-//! ```rust
-//! use next_config::{Config, Migration, submit_migration, error::Error};
-//! use serde::{Serialize, Deserialize};
-//! use serde_value::Value;
-//!
-//! #[derive(Debug, Default, Serialize, Deserialize, Config)]
-//! #[config(version = 2, file_name = "app.toml")]
-//! struct AppConfig {
-//!     name: String,
-//!     port: u16,
-//!     debug: bool,
-//!     max_connections: u32,  // New field in version 2
-//! }
-//!
-//! // Define the migration from version 1 to 2
-//! struct AppConfigV1ToV2;
-//!
-//! impl Migration for AppConfigV1ToV2 {
-//!     const FROM: u32 = 1;
-//!
-//!     fn migrate(value: &mut Value) -> Result<(), Error> {
-//!         // Add the new field with a default value
-//!         if let Value::Map(map) = value {
-//!             map.insert(
-//!                 Value::String("max_connections".to_string()),
-//!                 Value::U32(100),
-//!             );
-//!         }
-//!         Ok(())
-//!     }
-//! }
-//!
-//! submit_migration!(AppConfig, AppConfigV1ToV2);
-//! ```
-//!
-//! ## Architecture
-//!
-//! The library uses the [`inventory`] crate for compile-time registration of config types
-//! and migrations. This allows for a decentralized approach where configs can be defined
-//! in different modules and automatically collected at runtime.
-//!
-//! - [`Config`]: Derive macro that implements all required traits and registers the config
-//! - [`Config`]: The underlying trait that config structs implement
-//! - [`ConfigStore`]: The central registry that manages all config instances
-//! - [`Migration`]: Trait for defining schema migrations between versions
-//! - [`submit_migration!`]: Macro to register a migration
-
 mod config;
 pub mod error;
 mod migration;
-mod store;
+
+use std::{any::TypeId, fs, path::Path};
+
+use serde_value::Value;
 
 pub use config::Config;
 pub use migration::{Migration, RegisteredMigration};
-pub use store::ConfigStore;
+pub use next_config_macros::Config;
+
+use error::Error;
+
+const VERSION_KEY: &str = "_version";
+
+pub fn load<T: Config>(path: impl AsRef<Path>) -> Result<T, Error> {
+    let path = path.as_ref();
+    let mut value: Value = toml::from_str(&fs::read_to_string(path)?)?;
+    let original_version = version(&value)?;
+    let mut current = original_version.unwrap_or(1);
+    if current > T::VERSION {
+        return Err(Error::UnsupportedVersion {
+            found: current,
+            supported: T::VERSION,
+        });
+    }
+
+    while current < T::VERSION {
+        let mut migrations =
+            inventory::iter::<RegisteredMigration>
+                .into_iter()
+                .filter(|migration| {
+                    (migration.id)() == TypeId::of::<T>() && (migration.from)() == current
+                });
+        let migration = migrations.next().ok_or(Error::MissingMigration(current))?;
+        if migrations.next().is_some() {
+            return Err(Error::DuplicateMigration(current));
+        }
+        (migration.f)(&mut value)?;
+        current += 1;
+    }
+
+    remove_version(&mut value)?;
+    let config = T::deserialize(value)?;
+    if original_version != Some(T::VERSION) {
+        save(path, &config)?;
+    }
+    Ok(config)
+}
+
+pub fn save<T: Config>(path: impl AsRef<Path>, config: &T) -> Result<(), Error> {
+    let path = path.as_ref();
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    let mut value = serde_value::to_value(config)?;
+    set_version(&mut value, T::VERSION)?;
+    let temporary = path.with_extension("tmp");
+    fs::write(&temporary, toml::to_string_pretty(&value)?)?;
+    fs::rename(temporary, path)?;
+    Ok(())
+}
+
+fn version(value: &Value) -> Result<Option<u32>, Error> {
+    let Value::Map(map) = value else {
+        return Err(Error::RootNotTable);
+    };
+    map.get(&Value::String(VERSION_KEY.into()))
+        .cloned()
+        .map(Value::deserialize_into)
+        .transpose()
+        .map_err(Into::into)
+}
+
+fn set_version(value: &mut Value, version: u32) -> Result<(), Error> {
+    let Value::Map(map) = value else {
+        return Err(Error::RootNotTable);
+    };
+    map.insert(Value::String(VERSION_KEY.into()), Value::U32(version));
+    Ok(())
+}
+
+fn remove_version(value: &mut Value) -> Result<(), Error> {
+    let Value::Map(map) = value else {
+        return Err(Error::RootNotTable);
+    };
+    map.remove(&Value::String(VERSION_KEY.into()));
+    Ok(())
+}
 
 #[doc(hidden)]
 pub mod __private {
     pub use inventory;
 }
-
-// Re-export the derive macro
-pub use next_config_macros::Config;
