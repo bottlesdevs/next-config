@@ -2,7 +2,7 @@ mod config;
 pub mod error;
 mod migration;
 
-use std::{any::TypeId, fs, path::Path};
+use std::{any::TypeId, fs, io, path::Path};
 
 use serde_value::Value;
 
@@ -51,12 +51,19 @@ pub fn load<T: Config>(path: impl AsRef<Path>) -> Result<T, Error> {
 
 pub fn save<T: Config>(path: impl AsRef<Path>, config: &T) -> Result<(), Error> {
     let path = path.as_ref();
-    if let Some(parent) = path
+    let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent)?;
+        .unwrap_or_else(|| Path::new("."));
+
+    if !parent.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotADirectory,
+            format!("`{}` is not a directory", parent.display()),
+        )
+        .into());
     }
+
     let mut value = serde_value::to_value(config)?;
     set_version(&mut value, T::VERSION)?;
     let temporary = path.with_extension("tmp");
