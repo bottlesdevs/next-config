@@ -8,18 +8,19 @@ struct TestConfig {
     count: u32,
 }
 
-#[test]
-fn saves_and_loads_any_path() {
+#[tokio::test]
+async fn saves_and_loads_any_path() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("nested/config.toml");
+    tokio::fs::create_dir(path.parent().unwrap()).await.unwrap();
     let expected = TestConfig {
         name: "test".into(),
         count: 42,
     };
 
-    save(&path, &expected).unwrap();
+    save(&path, &expected).await.unwrap();
 
-    assert_eq!(load::<TestConfig>(&path).unwrap(), expected);
+    assert_eq!(load::<TestConfig>(&path).await.unwrap(), expected);
     assert!(
         std::fs::read_to_string(path)
             .unwrap()
@@ -34,14 +35,14 @@ struct OlderConfig {
     value: u32,
 }
 
-#[test]
-fn rejects_newer_versions() {
+#[tokio::test]
+async fn rejects_newer_versions() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("config.toml");
     std::fs::write(&path, "_version = 2\nvalue = 1\n").unwrap();
 
     assert!(matches!(
-        load::<OlderConfig>(path),
+        load::<OlderConfig>(path).await,
         Err(Error::UnsupportedVersion {
             found: 2,
             supported: 1
@@ -56,10 +57,10 @@ struct Strict {
     value: u32,
 }
 
-#[test]
-fn version_metadata_is_not_deserialized_as_a_config_field() {
+#[tokio::test]
+async fn version_metadata_is_not_deserialized_as_a_config_field() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("strict.toml");
-    save(&path, &Strict { value: 7 }).unwrap();
-    assert_eq!(load::<Strict>(path).unwrap(), Strict { value: 7 });
+    save(&path, &Strict { value: 7 }).await.unwrap();
+    assert_eq!(load::<Strict>(path).await.unwrap(), Strict { value: 7 });
 }

@@ -24,14 +24,14 @@ impl Migration for V1ToV2 {
 
 submit_migration!(Migrated, V1ToV2);
 
-#[test]
-fn migrates_and_persists() {
+#[tokio::test]
+async fn migrates_and_persists() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("config.toml");
     std::fs::write(&path, "_version = 1\nname = 'old'\n").unwrap();
 
     assert_eq!(
-        load::<Migrated>(&path).unwrap(),
+        load::<Migrated>(&path).await.unwrap(),
         Migrated {
             name: "old".into(),
             enabled: true
@@ -50,14 +50,14 @@ struct Missing {
     value: u32,
 }
 
-#[test]
-fn rejects_missing_migration() {
+#[tokio::test]
+async fn rejects_missing_migration() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("config.toml");
     std::fs::write(&path, "_version = 1\nvalue = 1\n").unwrap();
 
     assert!(matches!(
-        load::<Missing>(path),
+        load::<Missing>(path).await,
         Err(Error::MissingMigration(1))
     ));
 }

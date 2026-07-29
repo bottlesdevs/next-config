@@ -2,9 +2,10 @@ mod config;
 pub mod error;
 mod migration;
 
-use std::{any::TypeId, fs, io, path::Path};
+use std::{any::TypeId, io, path::Path};
 
 use serde_value::Value;
+use tokio::fs;
 
 pub use config::Config;
 pub use migration::{Migration, RegisteredMigration};
@@ -14,9 +15,9 @@ use error::Error;
 
 const VERSION_KEY: &str = "_version";
 
-pub fn load<T: Config>(path: impl AsRef<Path>) -> Result<T, Error> {
+pub async fn load<T: Config>(path: impl AsRef<Path>) -> Result<T, Error> {
     let path = path.as_ref();
-    let mut value: Value = toml::from_str(&fs::read_to_string(path)?)?;
+    let mut value: Value = toml::from_str(&fs::read_to_string(path).await?)?;
     let original_version = version(&value)?;
     let mut current = original_version.unwrap_or(1);
     if current > T::VERSION {
@@ -44,12 +45,12 @@ pub fn load<T: Config>(path: impl AsRef<Path>) -> Result<T, Error> {
     remove_version(&mut value)?;
     let config = T::deserialize(value)?;
     if original_version != Some(T::VERSION) {
-        save(path, &config)?;
+        save(path, &config).await?;
     }
     Ok(config)
 }
 
-pub fn save<T: Config>(path: impl AsRef<Path>, config: &T) -> Result<(), Error> {
+pub async fn save<T: Config>(path: impl AsRef<Path>, config: &T) -> Result<(), Error> {
     let path = path.as_ref();
     let parent = path
         .parent()
@@ -67,8 +68,8 @@ pub fn save<T: Config>(path: impl AsRef<Path>, config: &T) -> Result<(), Error> 
     let mut value = serde_value::to_value(config)?;
     set_version(&mut value, T::VERSION)?;
     let temporary = path.with_extension("tmp");
-    fs::write(&temporary, toml::to_string_pretty(&value)?)?;
-    fs::rename(temporary, path)?;
+    fs::write(&temporary, toml::to_string_pretty(&value)?).await?;
+    fs::rename(temporary, path).await?;
     Ok(())
 }
 

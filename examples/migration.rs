@@ -24,8 +24,9 @@ impl Migration for V1ToV2 {
 
 submit_migration!(AppConfig, V1ToV2);
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = load::<AppConfig>(std::env::args().nth(1).unwrap_or("app.toml".into()))?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = load::<AppConfig>(std::env::args().nth(1).unwrap_or("app.toml".into())).await?;
     println!("{config:?}");
     Ok(())
 }

@@ -8,7 +8,8 @@ struct AppConfig {
     port: u16,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::temp_dir().join("next-config-example.toml");
     save(
         &path,
@@ -16,7 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "example".into(),
             port: 8080,
         },
-    )?;
-    println!("{:?}", load::<AppConfig>(path)?);
+    )
+    .await?;
+    println!("{:?}", load::<AppConfig>(path).await?);
     Ok(())
 }
