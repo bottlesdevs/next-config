@@ -4,8 +4,8 @@ mod migration;
 
 use std::{any::TypeId, io, path::Path};
 
+use async_fs as fs;
 use serde_value::Value;
-use tokio::fs;
 
 pub use config::Config;
 pub use migration::{Migration, RegisteredMigration};
@@ -57,7 +57,10 @@ pub async fn save<T: Config>(path: impl AsRef<Path>, config: &T) -> Result<(), E
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
 
-    if !parent.is_dir() {
+    if !fs::metadata(parent)
+        .await
+        .is_ok_and(|metadata| metadata.is_dir())
+    {
         return Err(io::Error::new(
             io::ErrorKind::NotADirectory,
             format!("`{}` is not a directory", parent.display()),

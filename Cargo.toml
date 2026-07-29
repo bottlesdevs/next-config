@@ -6,13 +6,14 @@ homepage.workspace = true
 authors.workspace = true
 
 [dependencies]
+async-fs.workspace = true
 inventory.workspace = true
 next-config-macros = { path = "./next-config-macros" }
 serde.workspace = true
 serde-value.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["fs"] }
 toml = "0.9.10"
 
 [dev-dependencies]
 tempfile = "3.15"
+tokio.workspace = true
