@@ -24,9 +24,11 @@ impl Migration for V1ToV2 {
 
 submit_migration!(AppConfig, V1ToV2);
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = load::<AppConfig>(std::env::args().nth(1).unwrap_or("app.toml".into())).await?;
-    println!("{config:?}");
-    Ok(())
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    futures_lite::future::block_on(async {
+        let config =
+            load::<AppConfig>(std::env::args().nth(1).unwrap_or("app.toml".into())).await?;
+        println!("{config:?}");
+        Ok(())
+    })
 }

@@ -24,24 +24,26 @@ impl Migration for V1ToV2 {
 
 submit_migration!(Migrated, V1ToV2);
 
-#[tokio::test]
-async fn migrates_and_persists() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("config.toml");
-    std::fs::write(&path, "_version = 1\nname = 'old'\n").unwrap();
+#[test]
+fn migrates_and_persists() {
+    futures_lite::future::block_on(async {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("config.toml");
+        std::fs::write(&path, "_version = 1\nname = 'old'\n").unwrap();
 
-    assert_eq!(
-        load::<Migrated>(&path).await.unwrap(),
-        Migrated {
-            name: "old".into(),
-            enabled: true
-        }
-    );
-    assert!(
-        std::fs::read_to_string(path)
-            .unwrap()
-            .contains("_version = 2")
-    );
+        assert_eq!(
+            load::<Migrated>(&path).await.unwrap(),
+            Migrated {
+                name: "old".into(),
+                enabled: true
+            }
+        );
+        assert!(
+            std::fs::read_to_string(path)
+                .unwrap()
+                .contains("_version = 2")
+        );
+    });
 }
 
 #[derive(Serialize, Deserialize, Config)]
@@ -50,14 +52,16 @@ struct Missing {
     value: u32,
 }
 
-#[tokio::test]
-async fn rejects_missing_migration() {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("config.toml");
-    std::fs::write(&path, "_version = 1\nvalue = 1\n").unwrap();
+#[test]
+fn rejects_missing_migration() {
+    futures_lite::future::block_on(async {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("config.toml");
+        std::fs::write(&path, "_version = 1\nvalue = 1\n").unwrap();
 
-    assert!(matches!(
-        load::<Missing>(path).await,
-        Err(Error::MissingMigration(1))
-    ));
+        assert!(matches!(
+            load::<Missing>(path).await,
+            Err(Error::MissingMigration(1))
+        ));
+    });
 }
