@@ -1,9 +1,15 @@
 [package]
 name = "next-config"
-version = "0.1.0"
-edition.workspace = true
-homepage.workspace = true
+description = "Typed TOML loading and saving with explicit schema versions and sequential migrations."
+version.workspace = true
 authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository = "https://github.com/bottlesdevs/next-config/"
+homepage = ""
+categories = [""]
+keywords = [""]
+exclude = [""]
 
 [dependencies]
 async-fs.workspace = true
