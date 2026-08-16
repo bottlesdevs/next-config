@@ -57,15 +57,19 @@ pub async fn save<T: Config>(path: impl AsRef<Path>, config: &T) -> Result<(), E
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
 
-    if !fs::metadata(parent)
-        .await
-        .is_ok_and(|metadata| metadata.is_dir())
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::NotADirectory,
-            format!("`{}` is not a directory", parent.display()),
-        )
-        .into());
+    match fs::metadata(parent).await {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::NotADirectory,
+                format!("`{}` is not a directory", parent.display()),
+            )
+            .into());
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            fs::create_dir_all(parent).await?;
+        }
+        Err(err) => return Err(err.into()),
     }
 
     let mut value = serde_value::to_value(config)?;
